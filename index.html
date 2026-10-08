@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tareas</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <h1>Gestor de tareas </h1>
+  <div class="api-box">
+    
+  </div>
+</header>
+
+<main class="layout">
+  <section class="panel">
+    <h2 id="formTitulo">Nueva tarea</h2>
+    <form id="form">
+      <input type="hidden" id="tareaId">
+      <label for="titulo">Título</label>
+      <input id="titulo" required maxlength="100" placeholder="Ej. Entregar reporte">
+      <label for="descripcion">Descripción</label>
+      <textarea id="descripcion" rows="3" placeholder="Detalles opcionales"></textarea>
+      <label for="prioridad">Prioridad</label>
+      <select id="prioridad">
+        <option value="Baja">Baja</option>
+        <option value="Media" selected>Media</option>
+        <option value="Alta">Alta</option>
+      </select>
+      <div class="row">
+        <button type="submit" class="btn primary" id="btnGuardar">Crear tarea</button>
+        <button type="button" class="btn ghost" id="btnCancelar" hidden>Cancelar</button>
+      </div>
+    </form>
+
+    <h2>Buscar por ID</h2>
+    <div class="row">
+      <input id="buscarId" type="number" min="1" placeholder="ID">
+      <button class="btn blue" id="btnBuscar">Buscar</button>
+    </div>
+    <div id="resultadoId" class="resultado"></div>
+  </section>
+
+  <section class="lista">
+    <div class="toolbar">
+      <div class="filtros" id="filtros">
+        <button class="chip activo" data-f="todas">Todas</button>
+        <button class="chip" data-f="pendientes">Pendientes</button>
+        <button class="chip" data-f="completadas">Completadas</button>
+      </div>
+      <button class="btn blue" id="btnRecargar">Recargar</button>
+    </div>
+    <p id="contador" class="contador"></p>
+    <div id="tareas" class="grid"></div>
+  </section>
+</main>
+
+<aside class="endpoints">
+  <h2>Endpoints que usa esta página</h2>
+  <ul>
+    <li><span class="m get">GET</span> /api/tareas <em>Listar todas</em></li>
+    <li><span class="m get">GET</span> /api/tareas/{id} <em>Obtener una</em></li>
+    <li><span class="m post">POST</span> /api/tareas <em>Crear</em></li>
+    <li><span class="m put">PUT</span> /api/tareas/{id} <em>Actualizar</em></li>
+    <li><span class="m patch">PATCH</span> /api/tareas/{id}/completar <em>Marcar completada</em></li>
+    <li><span class="m del">DELETE</span> /api/tareas/{id} <em>Eliminar</em></li>
+  </ul>
+</aside>
+
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+// Modelo: { id, titulo, descripcion, prioridad, completada }
+const $ = id => document.getElementById(id);
+let modo = localStorage.getItem('modo') || 'local';
+let API = localStorage.getItem('apiUrl') || $('apiUrl').value;
+let tareas = [], filtro = 'todas';
+$('modo').value = modo; $('apiUrl').value = API;
+mostrarModo();
+
+function mostrarModo() {
+  $('apiUrl').hidden = $('btnGuardarUrl').hidden = modo !== 'api';
+}
+
+/* ---- "API" local: imita los mismos endpoints usando localStorage ---- */
+const DB = {
+  leer() { try { return JSON.parse(localStorage.getItem('tareasDB')) || []; } catch (e) { return []; } },
+  guardar(l) { localStorage.setItem('tareasDB', JSON.stringify(l)); }
+};
+function apiLocal(method, id, accion, body) {
+  const l = DB.leer();
+  const i = l.findIndex(t => t.id == id);
+  if (method === 'GET' && !id) return l;                                  // GET /tareas
+  if (method === 'GET') { if (i < 0) throw new Error('404'); return l[i]; } // GET /tareas/{id}
+  if (method === 'POST') {                                                 // POST /tareas
+    const nueva = { ...body, id: l.reduce((m, t) => Math.max(m, t.id), 0) + 1 };
+    l.push(nueva); DB.guardar(l); return nueva;
+  }
+  if (i < 0) throw new Error('404');
+  if (method === 'PUT') l[i] = { ...body, id: l[i].id };                   // PUT /tareas/{id}
+  if (method === 'PATCH') l[i].completada = true;                          // PATCH /tareas/{id}/completar
+  if (method === 'DELETE') l.splice(i, 1);                                 // DELETE /tareas/{id}
+  DB.guardar(l); return null;
+}
+
+/* ---- Una sola función para ambos modos ---- */
+async function api(method, id, accion, body) {
+  if (modo === 'local') return apiLocal(method, id, accion, body);
+  const url = API + (id ? '/' + id : '') + (accion ? '/' + accion : '');
+  const opts = { method };
+  if (body) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error('Error ' + r.status);
+  return r.status === 204 ? null : r.json().catch(() => null);
+}
+
+function toast(msg, error) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (error ? ' error' : '');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.className = 'toast', 3000);
+}
+
+async function cargar() {
+  try { tareas = await api('GET'); render(); }
+  catch (e) { toast('No se pudo conectar con la API. Revisa la URL y el CORS.', true); }
+}
+
+async function buscar() {
+  const id = $('buscarId').value;
+  if (!id) return;
+  try {
+    const t = await api('GET', id);
+    $('resultadoId').innerHTML = `<strong>#${t.id} ${esc(t.titulo)}</strong><br>${esc(t.descripcion || 'Sin descripción')}<br>Prioridad: ${t.prioridad} · ${t.completada ? 'Completada' : 'Pendiente'}`;
+  } catch (e) { $('resultadoId').textContent = 'No se encontró la tarea ' + id; }
+}
+
+async function guardar(ev) {
+  ev.preventDefault();
+  const id = $('tareaId').value;
+  const actual = tareas.find(t => t.id == id);
+  const data = { titulo: $('titulo').value.trim(), descripcion: $('descripcion').value.trim(), prioridad: $('prioridad').value, completada: actual ? actual.completada : false };
+  try {
+    if (id) { await api('PUT', id, null, { ...data, id: +id }); toast('Tarea actualizada'); }
+    else { await api('POST', null, null, data); toast('Tarea creada'); }
+    limpiar(); cargar();
+  } catch (e) { toast('No se pudo guardar la tarea', true); }
+}
+
+async function completar(id) {
+  try { await api('PATCH', id, 'completar'); toast('Tarea completada'); cargar(); }
+  catch (e) { toast('No se pudo completar la tarea', true); }
+}
+
+async function eliminar(id) {
+  if (!confirm('¿Eliminar esta tarea?')) return;
+  try { await api('DELETE', id); toast('Tarea eliminada'); cargar(); }
+  catch (e) { toast('No se pudo eliminar la tarea', true); }
+}
+
+function editar(id) {
+  const t = tareas.find(x => x.id == id);
+  $('tareaId').value = t.id; $('titulo').value = t.titulo;
+  $('descripcion').value = t.descripcion || ''; $('prioridad').value = t.prioridad;
+  $('formTitulo').textContent = 'Editar tarea #' + t.id;
+  $('btnGuardar').textContent = 'Guardar cambios'; $('btnCancelar').hidden = false;
+  $('titulo').focus(); scrollTo({ top: 0, behavior: 'smooth' });
+}
+function limpiar() {
+  $('form').reset(); $('tareaId').value = '';
+  $('formTitulo').textContent = 'Nueva tarea'; $('btnGuardar').textContent = 'Crear tarea'; $('btnCancelar').hidden = true;
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function render() {
+  const lista = tareas.filter(t => filtro === 'todas' || (filtro === 'completadas') === !!t.completada);
+  $('contador').textContent = `${lista.length} de ${tareas.length} tareas`;
+  $('tareas').innerHTML = lista.length ? lista.map(t => `
+    <article class="card ${t.prioridad.toLowerCase()} ${t.completada ? 'hecha' : ''}">
+      <span class="badge">${t.prioridad}</span>
+      <h3>#${t.id} ${esc(t.titulo)}</h3>
+      <p>${esc(t.descripcion || 'Sin descripción')}</p>
+      <div class="acciones">
+        ${t.completada ? '<span class="ok">Completada</span>' : `<button class="btn green sm" onclick="completar(${t.id})">Completar</button>`}
+        <button class="btn blue sm" onclick="editar(${t.id})">Editar</button>
+        <button class="btn red sm" onclick="eliminar(${t.id})">Eliminar</button>
+      </div>
+    </article>`).join('') : '<p class="vacio">No hay tareas aquí. Crea la primera con el formulario.</p>';
+}
+
+$('form').addEventListener('submit', guardar);
+$('btnCancelar').onclick = limpiar;
+$('btnBuscar').onclick = buscar;
+$('btnRecargar').onclick = cargar;
+$('modo').onchange = () => { modo = $('modo').value; localStorage.setItem('modo', modo); mostrarModo(); cargar(); };
+$('btnGuardarUrl').onclick = () => { API = $('apiUrl').value.trim().replace(/\/$/, ''); localStorage.setItem('apiUrl', API); toast('URL guardada'); cargar(); };
+$('filtros').onclick = e => {
+  if (!e.target.dataset.f) return;
+  filtro = e.target.dataset.f;
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('activo', c === e.target));
+  render();
+};
+
+// Datos de ejemplo la primera vez que se abre en modo local
+if (modo === 'local' && !localStorage.getItem('tareasDB')) {
+  DB.guardar([
+    { id: 1, titulo: 'Probar el gestor de tareas', descripcion: 'Crea, edita, completa y elimina tareas.', prioridad: 'Alta', completada: false },
+    { id: 2, titulo: 'Subir los archivos a Hostinger', descripcion: 'index.html y styles.css en public_html.', prioridad: 'Media', completada: false }
+  ]);
+}
+cargar();
+</script>
+</body>
+</html>
