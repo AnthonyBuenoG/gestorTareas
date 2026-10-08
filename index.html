@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tareas</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="./manifest.json">
 </head>
 <body>
 <header class="top">
@@ -218,6 +219,21 @@ if (modo === 'local' && !localStorage.getItem('tareasDB')) {
   ]);
 }
 cargar();
+</script>
+
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then((registration) => {
+        console.log('Service Worker registrado:', registration.scope);
+      })
+      .catch((error) => {
+        console.error('Error al registrar Service Worker:', error);
+      });
+  });
+}
 </script>
 </body>
 </html>
