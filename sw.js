@@ -1,12 +1,12 @@
 const CACHE_NAME = 'mi_pwa-v1';
 
 const APP_SHELL = [
-    "/",
-    "/index.html",
-    "/manifest.json",
-    "/app.js",
-    "/sw.js",
-    "/index.css"
+    "https://anthonybuenog.github.io/gestorTareas/",
+    "https://anthonybuenog.github.io/gestorTareas/index.html",
+    "https://anthonybuenog.github.io/gestorTareas/manifest.json",
+    "https://anthonybuenog.github.io/gestorTareas/app.js",
+    "https://anthonybuenog.github.io/gestorTareas/sw.js",
+    "https://anthonybuenog.github.io/gestorTareas/index.css"
 ];
 
 self.addEventListener('install', (event) => {
