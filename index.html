@@ -42,7 +42,13 @@
       </div>
     </form>
 
-
+    <h2>Buscar por ID</h2>
+    <div class="row">
+      <input id="buscarId" type="number" min="1" placeholder="ID">
+      <button class="btn blue" id="btnBuscar">Buscar</button>
+    </div>
+    <div id="resultadoId" class="resultado"></div>
+  </section>
 
   <section class="lista">
     <div class="toolbar">
@@ -58,17 +64,7 @@
   </section>
 </main>
 
-<aside class="endpoints">
-  <h2>Endpoints que usa esta página</h2>
-  <ul>
-    <li><span class="m get">GET</span> /api/tareas <em>Listar todas</em></li>
-    <li><span class="m get">GET</span> /api/tareas/{id} <em>Obtener una</em></li>
-    <li><span class="m post">POST</span> /api/tareas <em>Crear</em></li>
-    <li><span class="m put">PUT</span> /api/tareas/{id} <em>Actualizar</em></li>
-    <li><span class="m patch">PATCH</span> /api/tareas/{id}/completar <em>Marcar completada</em></li>
-    <li><span class="m del">DELETE</span> /api/tareas/{id} <em>Eliminar</em></li>
-  </ul>
-</aside>
+
 
 <div id="toast" class="toast" role="status"></div>
 
