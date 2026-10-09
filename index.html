@@ -79,40 +79,56 @@
 <div id="toast" class="toast" role="status"></div>
 
 <script>
-// Modelo: { id, titulo, descripcion, prioridad, completada }
+//definimos un atajo 
 const $ = id => document.getElementById(id);
 let modo = localStorage.getItem('modo') || 'local';
 let API = localStorage.getItem('apiUrl') || $('apiUrl').value;
 let tareas = [], filtro = 'todas';
+
+//se sincronizan los controles de la pagina con los valores guardados en localStorage
 $('modo').value = modo; $('apiUrl').value = API;
 mostrarModo();
 
+//muiestra y oculta el campo de url y su boton de guardar, si el modo es local quedan ocultos porque no se necesita servidor
 function mostrarModo() {
   $('apiUrl').hidden = $('btnGuardarUrl').hidden = modo !== 'api';
 }
 
-/* ---- "API" local: imita los mismos endpoints usando localStorage ---- */
+//API LOCAL
+
+//llama a una funcion con la misma forma que un endpoint  REST, guardandose los datos en el localStorage del navegador, para poder usar la app sin necesidad de un servidor
 const DB = {
   leer() { try { return JSON.parse(localStorage.getItem('tareasDB')) || []; } catch (e) { return []; } },
   guardar(l) { localStorage.setItem('tareasDB', JSON.stringify(l)); }
 };
+
+//simula una peticion a la api usando localstorage
+//metod: (get, post, put, patch, delete), id: (identificador de la tarea), 
+//accion: (es reservado para rutas), body: datos de la tarea para post y put
 function apiLocal(method, id, accion, body) {
+  //carga la lista de tareas guardadas
   const l = DB.leer();
+  //busca la posicion de la tarea con ese id (-1 si no existe)
+  //se usa  ==  para que 3 (texto) y 3 (numerp) coincidan
   const i = l.findIndex(t => t.id == id);
-  if (method === 'GET' && !id) return l;                                  // GET /tareas
-  if (method === 'GET') { if (i < 0) throw new Error('404'); return l[i]; } // GET /tareas/{id}
-  if (method === 'POST') {                                                 // POST /tareas
+  if (method === 'GET' && !id) return l;                                 
+  if (method === 'GET') { if (i < 0) throw new Error('404'); return l[i]; } 
+  if (method === 'POST') {    
+    //copia los datos recibiidos y les asigna un id nuevo
+    //el id mas grande existente en + 1 empieza en 0 si la lista est vacia.                                            
     const nueva = { ...body, id: l.reduce((m, t) => Math.max(m, t.id), 0) + 1 };
+    //agrega la tarea a la lusta, guardada y devuelve la tarea creada 
     l.push(nueva); DB.guardar(l); return nueva;
   }
   if (i < 0) throw new Error('404');
-  if (method === 'PUT') l[i] = { ...body, id: l[i].id };                   // PUT /tareas/{id}
-  if (method === 'PATCH') l[i].completada = true;                          // PATCH /tareas/{id}/completar
-  if (method === 'DELETE') l.splice(i, 1);                                 // DELETE /tareas/{id}
+  if (method === 'PUT') l[i] = { ...body, id: l[i].id };                  
+  if (method === 'PATCH') l[i].completada = true;                          
+  if (method === 'DELETE') l.splice(i, 1);   
+  //guarda los cambios en el localstorage y devuelve los nulos                               
   DB.guardar(l); return null;
 }
 
-/* ---- Una sola función para ambos modos ---- */
+//hace la peticion: en modo local usa la apilocal arma la url y llama al servidor con el fetch
 async function api(method, id, accion, body) {
   if (modo === 'local') return apiLocal(method, id, accion, body);
   const url = API + (id ? '/' + id : '') + (accion ? '/' + accion : '');
@@ -122,7 +138,7 @@ async function api(method, id, accion, body) {
   if (!r.ok) throw new Error('Error ' + r.status);
   return r.status === 204 ? null : r.json().catch(() => null);
 }
-
+//muestra un mensaje temporal de 3s si error es true, se ve en estilo de error
 function toast(msg, error) {
   const t = $('toast');
   t.textContent = msg;
@@ -131,10 +147,12 @@ function toast(msg, error) {
   toast.t = setTimeout(() => t.className = 'toast', 3000);
 }
 
+//pide todas las tareas a la api, y si falla avisa al toast del errooe
 async function cargar() {
   try { tareas = await api('GET'); render(); }
   catch (e) { toast('No se pudo conectar con la API. Revisa la URL y el CORS.', true); }
 }
+//guarda el formularios si hay id actualiza la tarea (PUT), si no la crea (POST)
 
 async function buscar() {
   const id = $('buscarId').value;
@@ -144,6 +162,8 @@ async function buscar() {
     $('resultadoId').innerHTML = `<strong>#${t.id} ${esc(t.titulo)}</strong><br>${esc(t.descripcion || 'Sin descripción')}<br>Prioridad: ${t.prioridad} · ${t.completada ? 'Completada' : 'Pendiente'}`;
   } catch (e) { $('resultadoId').textContent = 'No se encontró la tarea ' + id; }
 }
+
+//guarda el formulario si hay id actualiza la tarea (PUT), si no la crea (POST)
 
 async function guardar(ev) {
   ev.preventDefault();
@@ -156,18 +176,21 @@ async function guardar(ev) {
     limpiar(); cargar();
   } catch (e) { toast('No se pudo guardar la tarea', true); }
 }
+//marca una tarea como completada (PATCH) y recarga la lista
 
 async function completar(id) {
   try { await api('PATCH', id, 'completar'); toast('Tarea completada'); cargar(); }
   catch (e) { toast('No se pudo completar la tarea', true); }
 }
 
+//elimina una tarea (DELETE) después de pedir confirmación y recarga la lista
+
 async function eliminar(id) {
   if (!confirm('¿Eliminar esta tarea?')) return;
   try { await api('DELETE', id); toast('Tarea eliminada'); cargar(); }
   catch (e) { toast('No se pudo eliminar la tarea', true); }
 }
-
+// Pasa los datos de una tarea al formulario y lo pone en modo edición
 function editar(id) {
   const t = tareas.find(x => x.id == id);
   $('tareaId').value = t.id; $('titulo').value = t.titulo;
@@ -176,11 +199,16 @@ function editar(id) {
   $('btnGuardar').textContent = 'Guardar cambios'; $('btnCancelar').hidden = false;
   $('titulo').focus(); scrollTo({ top: 0, behavior: 'smooth' });
 }
+//vacia el formulario y lo regresa al modo "Nueva tarea"
+
 function limpiar() {
   $('form').reset(); $('tareaId').value = '';
   $('formTitulo').textContent = 'Nueva tarea'; $('btnGuardar').textContent = 'Crear tarea'; $('btnCancelar').hidden = true;
 }
+//escapa caracteres especiales del texto (&, <, >, comillas) para evitar que se inyecte HTML
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+//filtra las tareas según el filtro activo y dibuja las tarjetas (o un mensaje si no hay ninguna)
 
 function render() {
   const lista = tareas.filter(t => filtro === 'todas' || (filtro === 'completadas') === !!t.completada);
@@ -198,12 +226,17 @@ function render() {
     </article>`).join('') : '<p class="vacio">No hay tareas aquí. Crea la primera con el formulario.</p>';
 }
 
+//conecta los botones y controles de la página con sus funciones
+
 $('form').addEventListener('submit', guardar);
 $('btnCancelar').onclick = limpiar;
 $('btnBuscar').onclick = buscar;
 $('btnRecargar').onclick = cargar;
+//conecta los botones y controles de la página con sus funciones
 $('modo').onchange = () => { modo = $('modo').value; localStorage.setItem('modo', modo); mostrarModo(); cargar(); };
+//guarda la URL de la API (sin "/" final) y recarga las tareas
 $('btnGuardarUrl').onclick = () => { API = $('apiUrl').value.trim().replace(/\/$/, ''); localStorage.setItem('apiUrl', API); toast('URL guardada'); cargar(); };
+//cambia el filtro (todas / completadas / pendientes), marca el botón activo y vuelve a pintar
 $('filtros').onclick = e => {
   if (!e.target.dataset.f) return;
   filtro = e.target.dataset.f;
@@ -217,7 +250,10 @@ if (modo === 'local' && !localStorage.getItem('tareasDB')) {
     { id: 1, titulo: 'Probar el gestor de tareas', descripcion: 'Crea, edita, completa y elimina tareas.', prioridad: 'Alta', completada: false },
     { id: 2, titulo: 'Subir los archivos a Hostinger', descripcion: 'index.html y styles.css en public_html.', prioridad: 'Media', completada: false }
   ]);
+
 }
+//carga y miestra las tareas al abrir la página
+
 cargar();
 </script>
 
